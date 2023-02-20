@@ -1,0 +1,17 @@
+
+Para obtener el valor de un bit en un tipo int, puedes utilizar el operador de bit a bit (&)
+para realizar una operación AND entre el valor del int y un número binario que tenga un 1 
+en la posición del bit que deseas comprobar y 0 en todas las demás posiciones.
+
+Por ejemplo, si deseas comprobar el quinto bit del int valor, puedes realizar la operación:
+
+python
+Copy code
+int quinto_bit = (valor & (1 << 4)) != 0;
+En este caso, (1 << 4) es un número binario que tiene un 1 en la quinta posición (empezando desde cero),
+es decir, 00010000 en binario. Luego, al realizar la operación AND entre valor y 00010000, obtendrás un 
+número que tendrá un 1 en la quinta posición si y solo si el quinto bit de valor es 1.
+
+Finalmente, el resultado de la operación valor & (1 << 4) será diferente de cero si el quinto bit es 1,
+y será cero si el quinto bit es 0. Por lo tanto, la variable quinto_bit tendrá el valor 1 si el quinto
+bit es 1, y tendrá el valor 0 si el quinto bit es 0.

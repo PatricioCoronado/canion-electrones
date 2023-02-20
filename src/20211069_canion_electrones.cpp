@@ -25,16 +25,20 @@
 /**************************************************************
  * Constantes y variables
  ***************************************************************/
-#define depuracion 1 // Poner a 0 en el flasheo fineal
+#define depuracion 0 // Poner a 0 en el flasheo fineal
 boolean pushbutton = false;
 boolean displayInverso=false;
 
 // TO DO detarminar las ganancias de cada convertidos
-
+//V Energy 
 #define PENDIENTE_VE 0.0075     // Ver el excel "Ajuste curvas del DAC.xlsx"
 #define b_VE 1.067
-#define GAIN_IENERGY 10     // TO DO poner el valor real cuando se sepa
-#define GAIN_MR 10     // TO DO poner el valor real cuando se sepa
+//Mesh retard
+#define PENDIENTE_MR 0.00619     // Ver el excel "Ajuste curvas del DAC.xlsx"
+#define B_MR 0.7168
+// I Energy
+#define GAIN_IENERGY 10.8     // para ver la corriente en uA
+//Filamento
 #define GAIN_IFILAMENT 1.54 // Ganancia de la lectura del filamento
 // Pines del rotary encoder (poner condensador 100nF a masa)
 #define CLK_ROTARY_ENCODER 6
@@ -104,13 +108,11 @@ void setup(void)
   pinMode(PIN_TEST1, OUTPUT);
   digitalWrite(PIN_TEST2, HIGH);
   digitalWrite(PIN_TEST1, HIGH);
-  // TO DO habilita el watchdog
-  //WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
-  //WatchDog.setup(WDT_HARDCYCLE4S);         // initialize WDT-softcounter refesh cycle on 4
+  WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
+  WatchDog.setup(WDT_HARDCYCLE4S);         // initialize WDT-softcounter refesh cycle on 4
   
   if (depuracion)    Serial.begin(115200);
-  // Display
-  display.begin();
+  display.begin();// Display
   // display.setBusClock(1200000);
   //display.setBusClock(1000000);
   display.setBusClock(400000);//Si se sube más se cuelga el micro y actua el watchdog
@@ -120,7 +122,8 @@ void setup(void)
   ads.begin(); // Inicializa conversor ADS1115
   // ads.setGain(GAIN_TWOTHIRDS);
   ads.setGain(GAIN_TWO);
-
+  //Para utilizar el convertidor ADC interno
+  //analogReference(AR_INTERNAL2V2); //Referencia
   /*
   Según la ganancia que programemos tendremos un VFS y un LSB
   teniendo en cuenta que son 15 bits de resolución ya que el
@@ -152,82 +155,8 @@ void setup(void)
   // Arranca el Timer0. Empieza a capturar muestras
   TimerTcc0.initialize(TS_20ms); // preferiblemente 20ms
   TimerTcc0.attachInterrupt(timerTS);
-}
-/**************************************************************
- * loop
- ***************************************************************/
-void loop(void)
-{
-  WatchDog.clear(); // Refesca el watchdog
-  if(cambiaDutyCicle)//Actualiza el setpoint de corriente 
-  {
-    pwm(PIN_PWM, FREQ_PWM, dutyCicle);
-    cambiaDutyCicle=false;
-  }
-  //Medidas 
-  if (contadorLecturasADC == LECTURAS_ADC) // Si ha hecho 20 LECTURAS_ADC promedia y muestra
-  {                                        // Inhabilita interrupciones para evitar conflictos
-    digitalWrite(PIN_LED_RXL, LOW); // para ver la latencia
-    digitalWrite(PIN_TEST2, LOW);
-    TimerTcc0.detachInterrupt();//Detiene las adquisiciones del ADC
-    detachInterrupt(CLK_ROTARY_ENCODER); //Evita interrupciones del rotary encoder
-    detachInterrupt(SW_ROTARY_ENCODER);
-        /*---------------------------------------------------------*/
-    // Calcula valores de medida a partir de las medias de los datos acumulados del ADC
-    adc0 = adc0 / LECTURAS_ADC;                 // Corriente de filamento
-    adc1 = adc1 / LECTURAS_ADC;                 // V_Energy
-    adc2 = adc2 / LECTURAS_ADC;                 // Corriente Energy (emisión)
-    adc3 = adc3 / LECTURAS_ADC;                 
-    a0 = adc0 * LSB_ADS * GAIN_IFILAMENT; // I_Filamento, Multiplica la palabra digital por el LSB y la ganancia
-    a1 = adc1 * LSB_ADS * GAIN_MR;        // Mesh Retard, Multiplica la palabra digital por el LSB y la ganancia
-    a2 = adc2 * LSB_ADS * GAIN_IENERGY;   // I_Energy Multiplica la palabra digital por el LSB y la ganancia
-    //a3 = adc3 * LSB_ADS * PENDIENTE_VE-17.0;   // V_Energy Multiplica la palabra digital por el LSB y la ganancia
-    a3=PENDIENTE_VE*adc3+b_VE; //Recta para calcular el valor real de V Energy. Ver el excel "Ajuste curvas del DAC.xlsx"
-    // muestra las medidas
-    char buffer[16];
-    snprintf(buffer,sizeof buffer,"%.2fA %.1d%s",a0,(100-(dutyCicle/10)),"% ");display.inverse();
-    display.drawString(5, 0, buffer);//En la linea 0 I_Filamento a0
-    snprintf(buffer,sizeof buffer,"%.2fV",a1);display.noInverse();
-    display.drawString(9, 2, buffer);//En la linea 2 V_MR a1
-    snprintf(buffer,sizeof buffer,"%.2fuA",a2); 
-    display.drawString(9, 6, buffer);//En la linea 6 I_Energy a2
-    if(a3<25.0)  snprintf(buffer,sizeof buffer,">-25V"); 
-    else  snprintf(buffer,sizeof buffer,"-%.0fV ",a3);  
-    display.drawString(9, 4, buffer);//En la linea 4 V_Energy a3
-    //
-    adc0 = 0; // Resetea los acumuladores de medidas
-    adc1 = 0;
-    adc2 = 0;
-    adc3 = 0;
-    contadorLecturasADC = 0;// Reset del contador de lecturas
-    // Muestra medias
-    // Si se ha pulsado el pulsador del rotary encoder...
-    if (pushbutton) // En principio el pulsador del rotary encoder no hace nada
-    {
-        // TO DO
-        // Eliminar todo el código del pushbutton
 
-      boolean dt = digitalRead(SW_ROTARY_ENCODER);
-      if(dt==false && displayInverso==false)
-      {
-        displayInverso=true;
-        display.inverse();
-      }
-      else if(dt==false && displayInverso==true)
-      {
-        displayInverso=false;
-        display.noInverse();
-      }
-      pushbutton = false;
-    }
-    /*---------------------------------------------------------*/
-    // Habilita interrupciones para seguir con las lecturas de ADC y rotary encoder
-    attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
-    attachInterrupt(SW_ROTARY_ENCODER, pushbutton_encoder, FALLING);
-    TimerTcc0.attachInterrupt(timerTS);
-    digitalWrite(PIN_TEST2, HIGH);
-    digitalWrite(PIN_LED_RXL, HIGH); // para ver la latencia
-  }
+  
 }
 /*************************************************************
   Display
@@ -239,9 +168,9 @@ void display_letrero_fijo(void)//Información fija que debe aparecer en el displ
   display.inverse();
   display.drawString(0, 0, "fil.=          ");
   display.noInverse();
-  display.drawString(0, 2, "m.retard=");
-  display.drawString(0, 4, "v.energy=");
-  display.drawString(0, 6, "i.energy=");
+  display.drawString(0, 2, "M_R=");
+  display.drawString(0, 4, "V_E=");
+  display.drawString(0, 6, "I_E=");
 }
 void display_saludo(void)//Cartel de presentación inicial
 {
@@ -288,7 +217,7 @@ void encoder(void)
   
 }
 /*************************************************************
-  Interrupción por pulsar el pushbutton
+  Interrupción por pulsar el pushbutton (no se utiliza)
 **************************************************************/
 void pushbutton_encoder(void)
 {
@@ -307,6 +236,7 @@ void timerTS(void)
   _adc0 = ads.readADC_SingleEnded(0); // Lee el ADC0
   adc0 = adc0 + _adc0;
   _adc1 = ads.readADC_SingleEnded(1); // Lee el ADC1
+  if((_adc1 & 0x8000)==0x8000) _adc1=0; //Evita valores negativos testeando el bit de signo
   adc1 = adc1 + _adc1;
   _adc2 = ads.readADC_SingleEnded(2); // Lee el ADC2
   adc2 = adc2 + _adc2;
@@ -329,6 +259,116 @@ void WatchDog_reset(void)
   //Por si es un problema del display
   display.initDisplay();//Esto hace un reset hardware...
   display.begin();//Después del reset hardware necesita un begin
+}
+/**************************************************************
+ * loop
+ ***************************************************************/
+void loop(void)
+{
+  WatchDog.clear(); // Refesca el watchdog
+  if(cambiaDutyCicle)//Actualiza el setpoint de corriente 
+  {
+    pwm(PIN_PWM, FREQ_PWM, dutyCicle);
+    cambiaDutyCicle=false;
+  }
+  //Medidas 
+  if (contadorLecturasADC == LECTURAS_ADC) // Si ha hecho 20 LECTURAS_ADC promedia y muestra
+  {                                        // Inhabilita interrupciones para evitar conflictos
+    digitalWrite(PIN_LED_RXL, LOW); // para ver la latencia
+    digitalWrite(PIN_TEST2, LOW);
+    TimerTcc0.detachInterrupt();//Detiene las adquisiciones del ADC
+    detachInterrupt(CLK_ROTARY_ENCODER); //Evita interrupciones del rotary encoder
+    detachInterrupt(SW_ROTARY_ENCODER);
+        /*---------------------------------------------------------*/
+    // Calcula valores de medida a partir de las medias de los datos acumulados del ADC
+    adc0 = adc0 / LECTURAS_ADC;                 // Corriente de filamento
+    adc1 = adc1 / LECTURAS_ADC;                 // V_Energy
+    adc2 = adc2 / LECTURAS_ADC;                 // Corriente Energy (emisión)
+    adc3 = adc3 / LECTURAS_ADC;                 
+    a0 = adc0 * LSB_ADS * GAIN_IFILAMENT; // I_Filamento, Multiplica la palabra digital por el LSB y la ganancia
+    
+    //a1 = adc1 * LSB_ADS * GAIN_MR;        // Mesh Retard, Multiplica la palabra digital por el LSB y la ganancia
+    a1=  adc1 * PENDIENTE_MR+B_MR; //Recta para calcular el valor real de mesh retard. Ver el excel "Ajuste curvas del DAC.xlsx"
+    if(a1<0.0) a1=0.0;
+    a2 = adc2 * LSB_ADS * GAIN_IENERGY;   // I_Energy Multiplica la palabra digital por el LSB y la ganancia
+    //a3 = adc3 * LSB_ADS * PENDIENTE_VE-17.0;   // V_Energy Multiplica la palabra digital por el LSB y la ganancia
+    
+    a3=PENDIENTE_VE*adc3+b_VE; //Recta para calcular el valor real de V Energy. Ver el excel "Ajuste curvas del DAC.xlsx"
+    // muestra las medidas
+    char buffer[16];
+    
+    /*
+     snprintf(buffer,sizeof buffer,"%.2fA %.1d%s",a0,(100-(dutyCicle/10)),"% ");//;display.inverse();
+    //buffer[15]='\0';
+    display.drawString(0, 0, buffer);//En la linea 0 I_Filamento a0
+    snprintf(buffer,sizeof buffer,"%.2fV",a1);//display.noInverse();
+    display.drawString(0, 2, buffer);//En la linea 2 V_MR a1
+    snprintf(buffer,sizeof buffer,"%.2fuA",a2); 
+    display.drawString(0, 6, buffer);//En la linea 6 I_Energy a2
+    if(a3<25.0)  snprintf(buffer,sizeof buffer,">-25V"); 
+    else  snprintf(buffer,sizeof buffer,"-%.0fV",a3);  
+    display.drawString(0, 4, buffer);//En la linea 4 V_Energy a3
+
+     */
+    // filamento
+     // snprintf(buffer,sizeof buffer,"I_FIL=%.2fA %.1d%s",a0,(100-(dutyCicle/10)),"% ");
+     snprintf(buffer,sizeof buffer,"I_FIL=--A");
+     display.inverse();
+    buffer[15]='\0';
+    display.drawString(0, 0, buffer);//En la linea 0 I_Filamento a0
+    display.noInverse();
+    //mesh retard
+    snprintf(buffer,sizeof buffer,"M_R=-%.1fV   ",a1);//display.noInverse()
+    //snprintf(buffer,sizeof buffer,"%.0d   ",adc1);
+    buffer[15]='\0';
+    display.drawString(0, 2, buffer);//En la linea 2 V_MR a1
+    //V Energy
+    if(a3<25.0)  snprintf(buffer,sizeof buffer,"V_E>-25.0V  "); 
+    else  snprintf(buffer,sizeof buffer,"V_E=-%.1fV   ",a3);  
+    buffer[15]='\0';
+    display.drawString(0, 4, buffer);//En la linea 4 V_Energy a3
+    //I Energy
+    a2=a2-a3/16.5;//Le resto la corriente que no es emisión 
+    snprintf(buffer,sizeof buffer,"I_E=%.2fmA   ",a2); 
+    buffer[15]='\0';
+    display.drawString(0, 6, buffer);//En la linea 6 I_Energy a2
+    
+    
+    
+    
+    adc0 = 0; // Resetea los acumuladores de medidas
+    adc1 = 0;
+    adc2 = 0;
+    adc3 = 0;
+    contadorLecturasADC = 0;// Reset del contador de lecturas
+    // Muestra medias
+    // Si se ha pulsado el pulsador del rotary encoder...
+    if (pushbutton) // En principio el pulsador del rotary encoder no hace nada
+    {
+        // TO DO
+        // Eliminar todo el código del pushbutton
+
+      boolean dt = digitalRead(SW_ROTARY_ENCODER);
+      if(dt==false && displayInverso==false)
+      {
+        displayInverso=true;
+        display.inverse();
+      }
+      else if(dt==false && displayInverso==true)
+      {
+        displayInverso=false;
+        display.noInverse();
+      }
+      pushbutton = false;
+    }
+    /*---------------------------------------------------------*/
+    // Habilita interrupciones para seguir con las lecturas de ADC y rotary encoder
+    attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
+    attachInterrupt(SW_ROTARY_ENCODER, pushbutton_encoder, FALLING);
+    TimerTcc0.attachInterrupt(timerTS);
+    digitalWrite(PIN_TEST2, HIGH);
+    digitalWrite(PIN_LED_RXL, HIGH); // para ver la latencia
+  }
 }
 /**************************************************************
  *                FIN
