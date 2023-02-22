@@ -94,7 +94,7 @@ void setup(void)
   digitalWrite(ENABLE_FILAMENTO, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); // Apaga el led para no consumir. Se apaga con high
-  digitalWrite(PIN_LED_RXL, LOW);
+  digitalWrite(PIN_LED_RXL, HIGH); //
   digitalWrite(PIN_LED_TXL, HIGH);//led TXL
   //pinMode(RESET_DISPLAY, OUTPUT);// No hace falta, se configura en la instanciación del objeto display
   pinMode(CLK_ROTARY_ENCODER, INPUT_PULLUP);
@@ -104,12 +104,10 @@ void setup(void)
   pinMode(PIN_TEST1, OUTPUT);
   digitalWrite(PIN_TEST2, HIGH);
   digitalWrite(PIN_TEST1, HIGH);
-  WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
-  WatchDog.setup(WDT_HARDCYCLE4S);         // initialize WDT-softcounter refesh cycle on 4
   if (depuracion)    Serial.begin(115200);//
   display.begin();// Display
   display.setBusClock(400000);//Si se sube más se cuelga el micro y actua el watchdog
-  Wire.setTimeout(1); // Tieme out del I2C, para salir de cuelgues por el i2c
+  Wire.setTimeout(5/*milisegundos*/); // Tieme out del I2C, para salir de cuelgues por el i2c
   //display_letrero_fijo();     // Muestra la parte fija en la pantalla (no se usa)
   // Convertidor AD
   ads.begin(); // Inicializa conversor ADS1115
@@ -145,7 +143,7 @@ void setup(void)
   //AR_INTERNAL1V65,
   // configure_ADC(3,3,5);
   display_saludo();
-  delay(3000); // Presentación inicial del display
+  delay(2000); // Presentación inicial del display
   display.clear();
   //display_letrero_fijo();  //No se utiliza
   digitalWrite(ENABLE_FILAMENTO, HIGH);//Hay una red RC que retarda el enable
@@ -159,6 +157,14 @@ void setup(void)
   // Arranca el Timer0. Empieza a capturar muestras
   TimerTcc0.initialize(TS_20ms); // preferiblemente 20ms
   TimerTcc0.attachInterrupt(timerTS);
+  //Programa el watchdog
+ WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
+  //WDT_HARDCYCLE62m  0x0430    // WDT HARD only : 64 clockcycles @ 1024hz = 62.5ms
+  //WDT_HARDCYCLE250m 0x0450    // WDT HARD only : 256 clockcycles @ 1024hz = 250ms
+  //WDT_HARDCYCLE1S   0x0470    // WDT HARD only : 1024 clockcycles @ 1024hz = 1 seg
+  //WDT_HARDCYCLE2S   0x0480    // WDT HARD only : 2048 clockcycles @ 1024hz = 2 seconds
+  //WDT_HARDCYCLE4S   0x0490    // WDT HARD cycle 4 Seconds
+  WatchDog.setup(WDT_HARDCYCLE250m);         // WDT-softcounter refesh cycle on ..
 }
 /*************************************************************
   Display
@@ -230,7 +236,7 @@ void timerTS(void)
 {
   // D_A0+=analogRead(A0); //Lee el D0 del ADC del SAMD21. Uso optativo para alguna señal
   contadorLecturasADC++;
-  digitalWrite(PIN_TEST1, LOW);
+  //digitalWrite(PIN_TEST1, LOW);
   _adc0 = ads.readADC_SingleEnded(0); // Lee el ADC0
   adc0 = adc0 + _adc0;
   _adc1 = ads.readADC_SingleEnded(1); // Lee el ADC1
@@ -240,17 +246,17 @@ void timerTS(void)
   adc2 = adc2 + _adc2;
   _adc3 = ads.readADC_SingleEnded(3); // Lee el ADC3
   adc3 = adc3 + _adc3;
-  digitalWrite(PIN_TEST1, HIGH);
+  //digitalWrite(PIN_TEST1, HIGH);
 }
 /**************************************************************
  * Función que se ejecuta cuando actua el watchdog
  * para que no actue el watchdog hay que resetear 
- * su contador en el loop así "WatchDog.clear();"
+ * su contador en el loop así "//WatchDog.clear();"
  * ***********************************************************/
 void WatchDog_reset(void)
 {
   digitalWrite(ENABLE_FILAMENTO, LOW);//Apaga el filamento de urgencia
-  digitalWrite(LED_BUILTIN, LOW); // enciendo el led como aviso
+  //digitalWrite(LED_BUILTIN, LOW); // enciendo el led como aviso
   //Por si se cuega por el wire
   Wire.flush();
   Wire.begin();
@@ -263,8 +269,11 @@ void WatchDog_reset(void)
  ***************************************************************/
 void loop(void)
 {
-  WatchDog.clear(); // Refesca el watchdog
-  if(cambiaDutyCicle)//Si es necesario actualiza el setpoint de corriente 
+   digitalWrite(PIN_TEST1, LOW);
+   WatchDog.clear(); // Refesca el watchdog-----------------
+   digitalWrite(PIN_TEST1, HIGH);
+
+   if(cambiaDutyCicle)//Si es necesario actualiza el setpoint de corriente 
   {
     pwm(PIN_PWM, FREQ_PWM, dutyCicle);
     cambiaDutyCicle=false;
@@ -272,8 +281,8 @@ void loop(void)
   //Medidas 
   if (contadorLecturasADC == LECTURAS_ADC) // Si ha hecho 20 LECTURAS_ADC promedia y muestra
   {                                        // Inhabilita interrupciones para evitar conflictos
-    digitalWrite(PIN_LED_RXL, LOW); // para ver la latencia
-    digitalWrite(PIN_TEST2, LOW);
+    digitalWrite(PIN_LED_TXL, LOW); // para ver la latencia
+    digitalWrite(PIN_TEST2, LOW);//2.5ms
     TimerTcc0.detachInterrupt();//Detiene las adquisiciones del ADC
     detachInterrupt(CLK_ROTARY_ENCODER); //Evita interrupciones del rotary encoder
     detachInterrupt(SW_ROTARY_ENCODER);
@@ -342,7 +351,7 @@ void loop(void)
     //attachInterrupt(SW_ROTARY_ENCODER, pushbutton_encoder, FALLING);
     TimerTcc0.attachInterrupt(timerTS);
     digitalWrite(PIN_TEST2, HIGH);
-    digitalWrite(PIN_LED_RXL, HIGH); // para ver la latencia
+    digitalWrite(PIN_LED_TXL, HIGH); // para ver la latencia
   }
 }
 /**************************************************************
