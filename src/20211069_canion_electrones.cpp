@@ -12,7 +12,7 @@
  *  de corriente de filamento la establece una salida PWM 
  *  entre 10 y 990, con 10 la corriente de filamento es de
  *  3,1A y con 990 es de menos de 10mA.
- *  Ultima actualizacion 20-02-2022
+ *  Ultima actualizacion 27-02-2022
  **************************************************************/
 #include <Arduino.h>
 // Recursos utilizados
@@ -72,17 +72,15 @@ boolean cambiaDutyCicle=false;//Flag para saber si hay que actualizar el dutycic
 Adafruit_ADS1115 ads; // Convertidor ADC I2C: ADS1115
 // U8X8_SH1106_128X64_NONAME_HW_I2C display(RESET /*pin de reset*/); // Display, reset por pin
 // U8X8_SH1106_128X64_NONAME_HW_I2C display(U8X8_PIN_NONE); // Display //Reset por red R-C (10Koh,10uF) OK
-   U8X8_SH1106_128X64_NONAME_HW_I2C display(RESET_DISPLAY); // Display //Reset pin 0
+   U8X8_SH1106_128X64_NONAME_HW_I2C display(RESET_DISPLAY); // Display //Reset pin 0 que finalmente no se utilizó, ya que se alimentó a 5V
 // Watchdog
-WDTZero WatchDog; // Define WDT
+WDTZero WatchDog; // Objeto Watchdog
 /**************************************************************
  * funciones
  ***************************************************************/
-void display_letrero_fijo(void);              // Cartel inicial del display
 void encoder(void);                   // Interrupción de los pines del rotary encoder
 void timerTS(void);                   // Interrupción del timer de captura de datos
 void display_saludo(void);            // Presentación inicial UAM / SEGAINVEX
-//void pushbutton_encoder(void);        // Función que atiende a la interrupción de switch del encoder rotativo
 void WatchDog_reset(void);
 /**************************************************************
  * setup
@@ -108,8 +106,7 @@ void setup(void)
   display.begin();// Display
   display.setBusClock(400000);//Si se sube más se cuelga el micro y actua el watchdog
   Wire.setTimeout(5/*milisegundos*/); // Tieme out del I2C, para salir de cuelgues por el i2c
-  //display_letrero_fijo();     // Muestra la parte fija en la pantalla (no se usa)
-  // Convertidor AD
+    // Convertidor AD
   ads.begin(); // Inicializa conversor ADS1115
   // ads.setGain(GAIN_TWOTHIRDS);
   ads.setGain(GAIN_TWO);
@@ -145,7 +142,6 @@ void setup(void)
   display_saludo();
   delay(2000); // Presentación inicial del display
   display.clear();
-  //display_letrero_fijo();  //No se utiliza
   digitalWrite(ENABLE_FILAMENTO, HIGH);//Hay una red RC que retarda el enable
   // TO DO estudiar el control de prioridades en las interrupciones del SAMD21
   // Prioridad en las interrupciones
@@ -153,7 +149,6 @@ void setup(void)
   // https://microchipdeveloper.com/32arm:samd21-nvic-overview
   // Arranca el rotary encoder
   attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
-  //attachInterrupt(SW_ROTARY_ENCODER, pushbutton_encoder, FALLING);
   // Arranca el Timer0. Empieza a capturar muestras
   TimerTcc0.initialize(TS_20ms); // preferiblemente 20ms
   TimerTcc0.attachInterrupt(timerTS);
@@ -164,22 +159,11 @@ void setup(void)
   //WDT_HARDCYCLE1S   0x0470    // WDT HARD only : 1024 clockcycles @ 1024hz = 1 seg
   //WDT_HARDCYCLE2S   0x0480    // WDT HARD only : 2048 clockcycles @ 1024hz = 2 seconds
   //WDT_HARDCYCLE4S   0x0490    // WDT HARD cycle 4 Seconds
-  WatchDog.setup(WDT_HARDCYCLE250m);         // WDT-softcounter refesh cycle on ..
+  WatchDog.setup(WDT_HARDCYCLE250m);         // WDT-softcounter refesh cycle on ..250ms
 }
 /*************************************************************
   Display
 **************************************************************/
-void display_letrero_fijo(void)//Información fija que debe aparecer en el display
-{
-  display.setFont(u8x8_font_8x13_1x2_f);
-  display.clear();
-  display.inverse();
-  display.drawString(0, 0, "I_FIL=         ");
-  display.noInverse();
-  display.drawString(0, 2, "M_R=           ");
-  display.drawString(0, 4, "V_E=           ");
-  display.drawString(0, 6, "I_E=           ");
-}
 void display_saludo(void)//Cartel de presentación inicial
 {
   display.setFont(u8x8_font_8x13_1x2_f);
@@ -219,16 +203,6 @@ void encoder(void)
     cambiaDutyCicle=true;
   }
 }
-/*************************************************************
-  Interrupción por pulsar el pushbutton (no se utiliza)
-**************************************************************/
-/* 
-void pushbutton_encoder(void)
-{
-    pushbutton = true;
-    digitalWrite(PIN_LED_TXL, LOW);
-}
- */
 /**************************************************************
  * lectura de los ADCs (4mS)
  * ***********************************************************/
@@ -325,30 +299,8 @@ void loop(void)
     adc2 = 0;
     adc3 = 0;
     contadorLecturasADC = 0;// Reset del contador de lecturas
-    // Muestra medias
-    
-    /*
-     No se utiliza el pushbutton del rotary encoder
-    if (pushbutton) // // Si se ha pulsado el pulsador del rotary encoder...
-    {
-      boolean dt = digitalRead(SW_ROTARY_ENCODER);
-      if(dt==false && displayInverso==false)
-      {
-        displayInverso=true;
-        display.inverse();
-      }
-      else if(dt==false && displayInverso==true)
-      {
-        displayInverso=false;
-        display.noInverse();
-      }
-      pushbutton = false;
-    }
- */
-    /*---------------------------------------------------------*/
     // Habilita interrupciones para seguir con las lecturas de ADC y rotary encoder
     attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
-    //attachInterrupt(SW_ROTARY_ENCODER, pushbutton_encoder, FALLING);
     TimerTcc0.attachInterrupt(timerTS);
     digitalWrite(PIN_TEST2, HIGH);
     digitalWrite(PIN_LED_TXL, HIGH); // para ver la latencia
