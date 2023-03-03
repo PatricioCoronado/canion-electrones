@@ -15,3 +15,50 @@ número que tendrá un 1 en la quinta posición si y solo si el quinto bit de va
 Finalmente, el resultado de la operación valor & (1 << 4) será diferente de cero si el quinto bit es 1,
 y será cero si el quinto bit es 0. Por lo tanto, la variable quinto_bit tendrá el valor 1 si el quinto
 bit es 1, y tendrá el valor 0 si el quinto bit es 0.
+
+En un microprocesador SAMD21 de la plataforma Arduino, la prioridad de las interrupciones se establece
+ mediante el sistema de prioridades de interrupción (NVIC) del microcontrolador.
+
+El SAMD21 tiene un total de 32 niveles de prioridad de interrupción numerados del 0 al 31, donde el nivel
+ 0 es la prioridad más alta y el nivel 31 es la prioridad más baja. Para establecer la prioridad de una
+  interrupción, se debe configurar su nivel de prioridad en el registro correspondiente del NVIC.
+
+En la plataforma Arduino, se puede usar la función "NVIC_SetPriority()" para establecer la prioridad
+ de una interrupción. Esta función acepta como argumentos el número de la interrupción y su nivel de 
+ prioridad, y se utiliza de la siguiente manera:
+
+NVIC_SetPriority(interrupt_number, priority_level);
+Donde "interrupt_number" es el número de la interrupción a configurar, y "priority_level" es el nivel 
+de prioridad deseado, que debe ser un valor entero del 0 al 31.
+
+En un microprocesador SAMD21 de la plataforma Arduino, la prioridad de las interrupciones se establece 
+mediante el sistema de prioridades de interrupción (NVIC) del microcontrolador.
+
+El SAMD21 tiene un total de 32 niveles de prioridad de interrupción numerados del 0 al 31, donde el nivel
+ 0 es la prioridad más alta y el nivel 31 es la prioridad más baja. Para establecer la prioridad de una
+  interrupción, se debe configurar su nivel de prioridad en el registro correspondiente del NVIC.
+
+En la plataforma Arduino, se puede usar la función "NVIC_SetPriority()" para establecer la prioridad de 
+una interrupción. Esta función acepta como argumentos el número de la interrupción y su nivel de prioridad,
+ y se utiliza de la siguiente manera:
+
+NVIC_SetPriority(interrupt_number, priority_level);
+Donde "interrupt_number" es el número de la interrupción a configurar, y "priority_level" es el nivel de 
+prioridad deseado, que debe ser un valor entero del 0 al 31.
+
+
+En un SAMD21, que es "External Interrupt Controller"
+En el microcontrolador SAMD21, el "External Interrupt Controller" (EIC) es un periférico que se encarga de 
+gestionar las interrupciones externas. El EIC es responsable de detectar los eventos de interrupción en los
+ pines configurados para la detección de eventos externos, y de generar una interrupción al procesador para
+  que éste pueda manejarla adecuadamente.
+
+El EIC del SAMD21 es altamente configurable, y puede ser utilizado para detectar eventos en los pines de entrada
+ digital, pines analógicos, y en los pines de entrada de señales externas, como pulsos, cambios de nivel,
+  flancos de subida o de bajada, entre otros. Además, el EIC puede ser configurado para activar interrupciones
+   tanto en los flancos de subida y bajada de la señal, como también en una dirección específica (solo en flanco 
+   de subida o solo en flanco de bajada).
+
+El EIC del SAMD21 puede ser utilizado en conjunto con otros periféricos del microcontrolador, como el NVIC y
+ el gestor de eventos (Event System), para lograr un control eficiente de las interrupciones y de los recursos
+  del sistema.
