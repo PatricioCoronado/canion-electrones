@@ -29,7 +29,7 @@
 #define PUERTO_SERIE
 //#define FLUSH_WIRE
 // #define EEPROM //Sería para guardar el dutycicle pero no lo usaré
-#define WATCHDOG //Resetea el sistema si se cuelga
+//#define WATCHDOG //Resetea el sistema si se cuelga
 //#define DELAY_ADC //Delay entre conversiones
 /**************************************************************
  * Constantes y variables primitivas
@@ -120,7 +120,7 @@ void display_saludo(void)//Cartel de presentación inicial
 void encoder(void)
 {
   digitalWrite(PIN_TEST3, LOW);
-  //if(adquiriendo) return;
+  if(adquiriendo) return;
   boolean dt = digitalRead(DT_ROTARY_ENCODER);
   int _dutyCicle=dutyCicle; //Guarda el valor de entrada
   //if (dt == false) //Poner la que registre el sentido correcto
@@ -153,7 +153,44 @@ void timerTS(void)
 {
   adquiriendo=true;
   // D_A0+=analogRead(A0); //Lee el D0 del ADC del SAMD21. Uso optativo para alguna señal
+  contadorLecturasADC++;
+  digitalWrite(PIN_TEST1, LOW);
+  #ifdef  FLUSH_WIRE
+    Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
+  #endif  
   
+  #ifdef  FLUSH_WIRE
+    Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
+  #endif  
+  _adc3 = ads.readADC_SingleEnded(3); // Lee el ADC3
+#ifdef DELAY_ADC
+    delayMicroseconds(30);
+  #endif
+  adc3 = adc3 + _adc3;
+  _adc0 = ads.readADC_SingleEnded(0); // Lee el ADC0
+  #ifdef DELAY_ADC
+    delayMicroseconds(30);
+  #endif
+  adc0 = adc0 + _adc0;
+  #ifdef  FLUSH_WIRE
+    Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
+  #endif  
+  _adc1 = ads.readADC_SingleEnded(1); // Lee el ADC1
+  #ifdef DELAY_ADC
+    delayMicroseconds(30);
+  #endif
+  if((_adc1 & 0x8000)==0x8000) _adc1=0; //Evita valores negativos testeando el bit de signo
+  adc1 = adc1 + _adc1;
+  #ifdef  FLUSH_WIRE
+    Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
+  #endif  
+  _adc2 = ads.readADC_SingleEnded(2); // Lee el ADC2
+  adc2 = adc2 + _adc2;
+  #ifdef  FLUSH_WIRE
+    Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
+  #endif  
+  adquiriendo=false;
+  digitalWrite(PIN_TEST1, HIGH);
   
 }
 /**************************************************************
@@ -231,9 +268,8 @@ void setup(void)
   display.clear();
   digitalWrite(ENABLE_FILAMENTO, HIGH);//Hay una red RC que retarda el enable
   // Prioridad en las interrupciones. Ver Doc.txt
-  NVIC_SetPriority(TCC0_IRQn, 30); // mínima prioridad de interrupción Timer0
+  NVIC_SetPriority(TCC0_IRQn, 0); // máxima prioridad de interrupción Timer0
   NVIC_SetPriority(EIC_IRQn,31); // External Interrupt Controller (EIC). Interrupción de pines mínima prioridad 
-  NVIC_SetPriority(WDT_IRQn,29); //Interrupción del watchdog
   // https://microchipdeveloper.com/32arm:samd21-nvic-overview
   // Arranca el rotary encoder
   attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
@@ -245,6 +281,7 @@ void setup(void)
    #ifdef WATCHDOG
     WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
    #endif     
+
   //WDT_HARDCYCLE62m  0x0430    // WDT HARD only : 64 clockcycles @ 1024hz = 62.5ms
   //WDT_HARDCYCLE250m 0x0450    // WDT HARD only : 256 clockcycles @ 1024hz = 250ms
   //WDT_HARDCYCLE1S   0x0470    // WDT HARD only : 1024 clockcycles @ 1024hz = 1 seg
@@ -252,7 +289,7 @@ void setup(void)
   //WDT_HARDCYCLE4S   0x0490    // WDT HARD cycle 4 Seconds
   #ifdef WATCHDOG
     //WatchDog.setup(WDT_HARDCYCLE2S);// Activa el watchdog WDT_SOFTCYCLE8S
-    WatchDog.setup(WDT_HARDCYCLE1S);
+    WatchDog.setup(WDT_SOFTCYCLE8S);
   #endif
 }
 /**************************************************************
@@ -268,25 +305,6 @@ void loop(void)
     TimerTcc0.start();
     attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);// Habilita interrupcione del rotary encoder
     TimerOn=false;
-   }
-
-   if (adquiriendo)
-   {
-    contadorLecturasADC++;
-    digitalWrite(PIN_TEST1, LOW);
-    _adc3 = ads.readADC_SingleEnded(3); // Lee el ADC3
-    adc3 = adc3 + _adc3;
-    _adc0 = ads.readADC_SingleEnded(0); // Lee el ADC0
-    adc0 = adc0 + _adc0;
-    _adc1 = ads.readADC_SingleEnded(1); // Lee el ADC1
-    if ((_adc1 & 0x8000) == 0x8000)
-      _adc1 = 0; // Evita valores negativos testeando el bit de signo
-    adc1 = adc1 + _adc1;
-    _adc2 = ads.readADC_SingleEnded(2); // Lee el ADC2
-    adc2 = adc2 + _adc2;
-    // adquiriendo=false;
-    digitalWrite(PIN_TEST1, HIGH);
-    adquiriendo = false;
    }
 
    if(cambiaDutyCicle)//Si es necesario actualiza el setpoint de corriente 
@@ -347,7 +365,7 @@ void loop(void)
     digitalWrite(PIN_TEST2, HIGH);
     digitalWrite(PIN_LED_TXL, HIGH); // para ver la latencia
     TimerOn=true;//Para que ponga en marcha el timer en el siguiente loop
-    //if(++contadorLoops==5){ Serial.println("Sigue funcionando");contadorLoops=0;}//delay(2000); //Para test. Hace que el watchdog resetee el uC
+    if(++contadorLoops==5){ Serial.println("Sigue funcionando");contadorLoops=0;}//delay(2000); //Para test. Hace que el watchdog resetee el uC
   }
 }
 /**************************************************************

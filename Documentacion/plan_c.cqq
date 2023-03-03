@@ -19,7 +19,7 @@
 #include <U8g2lib.h>          //Display
 #include <Wire.h>             //I2C para el display y el ADC
 //#include "ZeroConfigureADC.h" //ADC más rápido del SAMD21
-#include <TimerTCC0.h>        //Timer para periodo de muestreo
+//#include <TimerTCC0.h>        //Timer para periodo de muestreo
 #include <Adafruit_ADS1015.h> //ADC ADS1115
 #include "WDTZero.h"          //Watchdog
 #include <FlashStorage.h>     //Para emular EEPROM
@@ -29,7 +29,7 @@
 #define PUERTO_SERIE
 //#define FLUSH_WIRE
 // #define EEPROM //Sería para guardar el dutycicle pero no lo usaré
-#define WATCHDOG //Resetea el sistema si se cuelga
+//#define WATCHDOG //Resetea el sistema si se cuelga
 //#define DELAY_ADC //Delay entre conversiones
 /**************************************************************
  * Constantes y variables primitivas
@@ -78,9 +78,7 @@ float a0;//Medidas en números reales
 float a1;
 float a2;
 float a3;
-bool TimerOn=false;
-bool adquiriendo=false;
-int contadorLoops=0;
+long antes = 0;//Para temporizar
 /**************************************************************
  *  Objetos
  ***************************************************************/
@@ -96,7 +94,7 @@ U8X8_SH1106_128X64_NONAME_HW_I2C display(U8X8_PIN_NONE); // Display //Reset por 
  * funciones
  ***************************************************************/
 void encoder(void);                   // Interrupción de los pines del rotary encoder
-void timerTS(void);                   // Interrupción del timer de captura de datos
+//void timerTS(void);                   // Interrupción del timer de captura de datos
 void display_saludo(void);            // Presentación inicial UAM / SEGAINVEX
 #ifdef WATCHDOG
   void WatchDog_reset(void);
@@ -120,7 +118,6 @@ void display_saludo(void)//Cartel de presentación inicial
 void encoder(void)
 {
   digitalWrite(PIN_TEST3, LOW);
-  //if(adquiriendo) return;
   boolean dt = digitalRead(DT_ROTARY_ENCODER);
   int _dutyCicle=dutyCicle; //Guarda el valor de entrada
   //if (dt == false) //Poner la que registre el sentido correcto
@@ -146,16 +143,7 @@ void encoder(void)
   }
   digitalWrite(PIN_TEST3, HIGH);
 }
-/**************************************************************
- * lectura de los ADCs (4mS)
- * ***********************************************************/
-void timerTS(void)
-{
-  adquiriendo=true;
-  // D_A0+=analogRead(A0); //Lee el D0 del ADC del SAMD21. Uso optativo para alguna señal
-  
-  
-}
+
 /**************************************************************
  * Función que se ejecuta cuando actua el watchdog
  * para que no actue el watchdog hay que resetear 
@@ -203,7 +191,7 @@ void setup(void)
   #endif      
   display.begin();// Display
   display.setBusClock(300000);//ADS1115 puede llegar a 400KHz
-  Wire.setTimeout(5/*milisegundos*/); // Tieme out del I2C, para salir de cuelgues por el i2c
+  //Wire.setTimeout(5/*milisegundos*/); // Tieme out del I2C, para salir de cuelgues por el i2c
   // Convertidor AD
   ads.begin(); // Inicializa conversor ADS1115
   // ads.setGain(GAIN_TWOTHIRDS);
@@ -230,18 +218,13 @@ void setup(void)
   delay(1000); // Presentación inicial del display
   display.clear();
   digitalWrite(ENABLE_FILAMENTO, HIGH);//Hay una red RC que retarda el enable
-  // Prioridad en las interrupciones. Ver Doc.txt
-  NVIC_SetPriority(TCC0_IRQn, 30); // mínima prioridad de interrupción Timer0
-  NVIC_SetPriority(EIC_IRQn,31); // External Interrupt Controller (EIC). Interrupción de pines mínima prioridad 
-  NVIC_SetPriority(WDT_IRQn,29); //Interrupción del watchdog
-  // https://microchipdeveloper.com/32arm:samd21-nvic-overview
   // Arranca el rotary encoder
   attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
-  // Arranca el Timer0. Empieza a capturar muestras
-  TimerTcc0.initialize(TS_20ms); // preferiblemente 20ms
-  TimerTcc0.attachInterrupt(timerTS);
+  // Prioridad en las interrupciones. Ver Doc.txt
+  //NVIC_SetPriority(TCC0_IRQn, 0); // máxima prioridad de interrupción Timer0
+  NVIC_SetPriority(EIC_IRQn,31); // External Interrupt Controller (EIC). Interrupción de pines mínima prioridad 
+  // https://microchipdeveloper.com/32arm:samd21-nvic-overview
   //Programa el watchdog
-   
    #ifdef WATCHDOG
     WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
    #endif     
@@ -252,7 +235,7 @@ void setup(void)
   //WDT_HARDCYCLE4S   0x0490    // WDT HARD cycle 4 Seconds
   #ifdef WATCHDOG
     //WatchDog.setup(WDT_HARDCYCLE2S);// Activa el watchdog WDT_SOFTCYCLE8S
-    WatchDog.setup(WDT_HARDCYCLE1S);
+    WatchDog.setup(WDT_SOFTCYCLE8S);
   #endif
 }
 /**************************************************************
@@ -260,95 +243,107 @@ void setup(void)
  ***************************************************************/
 void loop(void)
 {
-   #ifdef WATCHDOG
-    WatchDog.clear(); // Refesca el watchdog-----------------
-   #endif
-   if(TimerOn) //Arranca el timer de adquisición si se paro para enviar datos al display en el loop
-   {
-    TimerTcc0.start();
-    attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);// Habilita interrupcione del rotary encoder
-    TimerOn=false;
-   }
-
-   if (adquiriendo)
-   {
-    contadorLecturasADC++;
-    digitalWrite(PIN_TEST1, LOW);
-    _adc3 = ads.readADC_SingleEnded(3); // Lee el ADC3
-    adc3 = adc3 + _adc3;
-    _adc0 = ads.readADC_SingleEnded(0); // Lee el ADC0
-    adc0 = adc0 + _adc0;
-    _adc1 = ads.readADC_SingleEnded(1); // Lee el ADC1
-    if ((_adc1 & 0x8000) == 0x8000)
-      _adc1 = 0; // Evita valores negativos testeando el bit de signo
-    adc1 = adc1 + _adc1;
-    _adc2 = ads.readADC_SingleEnded(2); // Lee el ADC2
-    adc2 = adc2 + _adc2;
-    // adquiriendo=false;
-    digitalWrite(PIN_TEST1, HIGH);
-    adquiriendo = false;
-   }
-
-   if(cambiaDutyCicle)//Si es necesario actualiza el setpoint de corriente 
-  {
+    #ifdef WATCHDOG
+      WatchDog.clear(); // Refesca el watchdog-----------------
+    #endif
+    if (cambiaDutyCicle) // Si es necesario actualiza el setpoint de corriente
+    {
     pwm(PIN_PWM, FREQ_PWM, dutyCicle);
-    cambiaDutyCicle=false;
-  }
-  //Medidas 
-  if (contadorLecturasADC == LECTURAS_ADC) // Si ha hecho 20 LECTURAS_ADC promedia y muestra
-  {                                        // Inhabilita interrupciones para evitar conflictos
-    TimerTcc0.stop();//Detiene el timer de adquisición
-    detachInterrupt(CLK_ROTARY_ENCODER); //Evita interrupciones del rotary encoder
-    digitalWrite(PIN_LED_TXL, LOW); // para ver la latencia
-    digitalWrite(PIN_TEST2, LOW);//2.5ms
-    //TimerTcc0.detachInterrupt();//Detiene las adquisiciones del ADC
-    // Calcula valores de medida a partir de las medias de los datos acumulados del ADC
-    adc0 = adc0 / LECTURAS_ADC;                 // Corriente de filamento
-    adc1 = adc1 / LECTURAS_ADC;                 // Mesh retard
-    adc2 = adc2 / LECTURAS_ADC;                 // Corriente Energy (emisión)
-    adc3 = adc3 / LECTURAS_ADC;                 // Tensión Energy
-    //Calcula los valores reales
-    a0 = adc0 * LSB_ADS * GAIN_IFILAMENT; // I_Filamento, Multiplica la palabra digital por el LSB y la ganancia
-    a1=  adc1 * PENDIENTE_MR+B_MR; //Recta para calcular el valor real de mesh retard. Ver el excel "Ajuste curvas del DAC.xlsx"
-    if(a1<0.0) a1=0.0;//Evita valores negativos
-    a2 = adc2 * LSB_ADS * GAIN_IENERGY;   // I_Energy Multiplica la palabra digital por el LSB y la ganancia
-    a3=PENDIENTE_VE*adc3+b_VE; //Recta para calcular el valor real de V Energy. Ver el excel "Ajuste curvas del DAC.xlsx"
-    // muestra las medidas
-    char buffer[16];//Para enviar al display con las medidas
-    // filamento
-    #ifdef  FLUSH_WIRE
-      Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
-    #endif  
-    //snprintf(buffer,sizeof buffer,"I_FIL=%.2fA %.1d%s",a0,(100-(dutyCicle/10)),"% "); //Medida opcional de I fil. donde se ve el %
-    snprintf(buffer,sizeof buffer,"I_FIL=%.2fA  ",a0);
-    buffer[15]='\0';//Esto para evitar problemas con los datos enviados al display
-    display.drawString(0, 0, buffer);//En la linea 0 I_Filamento a0
-    //mesh retard
-    snprintf(buffer,sizeof buffer,"M_R=-%.1fV   ",a1);
-    buffer[15]='\0';
-    display.drawString(0, 2, buffer);//En la linea 2 V_MR a1
-    //V Energy
-    if(a3<25.0)  snprintf(buffer,sizeof buffer,"V_E>-25.0V  "); //Entre -25V y 0V la fuente no es estable
-    else  snprintf(buffer,sizeof buffer,"V_E=-%.1fV   ",a3);  
-    buffer[15]='\0';
-    display.drawString(0, 4, buffer);
-    //I Energy
-    a2=a2-a3/16.5;//Le resto la corriente que extraigo para estabilizar la fuente, que no es emisión (R=16,5Koh)
-    if (a2<0) a2=0; //Evito medidas por debajo de 0 (offsets)
-    snprintf(buffer,sizeof buffer,"I_E=%.2fmA   ",a2); 
-    buffer[15]='\0';
-    display.drawString(0, 6, buffer);
-    // Resetea los acumuladores de medidas  
-    adc0 = 0; 
-    adc1 = 0;
-    adc2 = 0;
-    adc3 = 0;
-    contadorLecturasADC = 0;// Reset del contador de lecturas
-    digitalWrite(PIN_TEST2, HIGH);
-    digitalWrite(PIN_LED_TXL, HIGH); // para ver la latencia
-    TimerOn=true;//Para que ponga en marcha el timer en el siguiente loop
-    //if(++contadorLoops==5){ Serial.println("Sigue funcionando");contadorLoops=0;}//delay(2000); //Para test. Hace que el watchdog resetee el uC
-  }
+    cambiaDutyCicle = false;
+    }
+    /*...............................................
+      BUCLE TEMPORIZADO CADA MILISEGUNDOS_LOOP
+      Lee variables y las envía al broker
+    ...............................................*/
+    long ahora = millis();
+    if (ahora - antes > 20)
+    {
+      antes = ahora;    
+      detachInterrupt(CLK_ROTARY_ENCODER);
+      contadorLecturasADC++;
+      digitalWrite(PIN_TEST1, LOW);
+      //
+      //
+      _adc3 = ads.readADC_SingleEnded(3); // Lee el ADC3
+      Serial.println("adquiriendo");
+      //
+      adc3 = adc3 + _adc3;
+      _adc0 = ads.readADC_SingleEnded(0); // Lee el ADC0
+      //
+      adc0 = adc0 + _adc0;
+      //
+      _adc1 = ads.readADC_SingleEnded(1); // Lee el ADC1
+      //
+      if ((_adc1 & 0x8000) == 0x8000)
+        _adc1 = 0; // Evita valores negativos testeando el bit de signo
+      adc1 = adc1 + _adc1;
+      //
+      _adc2 = ads.readADC_SingleEnded(2); // Lee el ADC2
+      adc2 = adc2 + _adc2;
+      //
+      digitalWrite(PIN_TEST1, HIGH);
+      attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
+    }//Bucle temporizado
+    //
+    if (contadorLecturasADC == LECTURAS_ADC) // Si ha hecho 20 LECTURAS_ADC promedia y muestra
+    {                                        // Inhabilita interrupciones para evitar conflictos
+      Serial.println("mostrando");
+      contadorLecturasADC = 0; // Reset del contador de lecturas
+      //
+      detachInterrupt(CLK_ROTARY_ENCODER); // Evita interrupciones del rotary encoder
+      digitalWrite(PIN_LED_TXL, LOW);      // para ver la latencia
+      digitalWrite(PIN_TEST2, LOW);        // 2.5ms
+      //  Calcula valores de medida a partir de las medias de los datos acumulados del ADC
+      adc0 = adc0 / LECTURAS_ADC; // Corriente de filamento
+      adc1 = adc1 / LECTURAS_ADC; // Mesh retard
+      adc2 = adc2 / LECTURAS_ADC; // Corriente Energy (emisión)
+      adc3 = adc3 / LECTURAS_ADC; // Tensión Energy
+      // Calcula los valores reales
+      a0 = adc0 * LSB_ADS * GAIN_IFILAMENT; // I_Filamento, Multiplica la palabra digital por el LSB y la ganancia
+      a1 = adc1 * PENDIENTE_MR + B_MR;      // Recta para calcular el valor real de mesh retard. Ver el excel "Ajuste curvas del DAC.xlsx"
+      if (a1 < 0.0)
+        a1 = 0.0;                         // Evita valores negativos
+      a2 = adc2 * LSB_ADS * GAIN_IENERGY; // I_Energy Multiplica la palabra digital por el LSB y la ganancia
+      a3 = PENDIENTE_VE * adc3 + b_VE;    // Recta para calcular el valor real de V Energy. Ver el excel "Ajuste curvas del DAC.xlsx"
+      // muestra las medidas
+      char buffer[16]; // Para enviar al display con las medidas
+      // filamento
+      // snprintf(buffer,sizeof buffer,"I_FIL=%.2fA %.1d%s",a0,(100-(dutyCicle/10)),"% "); //Medida opcional de I fil. donde se ve el %
+      
+      a0=2.34;
+      snprintf(buffer, sizeof buffer, "I_FIL=%.2fA  ", a0);
+      buffer[15] = '\0';                // Esto para evitar problemas con los datos enviados al display
+      display.drawString(0, 0, buffer); // En la linea 0 I_Filamento a0
+      // mesh retard
+      a1=3.34;
+      snprintf(buffer, sizeof buffer, "M_R=-%.1fV   ", a1);
+      buffer[15] = '\0';
+      display.drawString(0, 2, buffer); // En la linea 2 V_MR a1
+      // V Energy
+      if (a3 < 25.0)
+        snprintf(buffer, sizeof buffer, "V_E>-25.0V  "); // Entre -25V y 0V la fuente no es estable
+      else
+      { a3=4.34;
+        snprintf(buffer, sizeof buffer, "V_E=-%.1fV   ", a3);
+      }
+      buffer[15] = '\0';
+      display.drawString(0, 4, buffer);
+      // I Energy
+      a2 = a2 - a3 / 16.5; // Le resto la corriente que extraigo para estabilizar la fuente, que no es emisión (R=16,5Koh)
+      if (a2 < 0) a2 = 0; // Evito medidas por debajo de 0 (offsets)
+      a2=3.34;
+      snprintf(buffer, sizeof buffer, "I_E=%.2fmA   ", a2);
+      buffer[15] = '\0';
+      display.drawString(0, 6, buffer);
+      // Resetea los acumuladores de medidas
+      adc0 = 0;
+      adc1 = 0;
+      adc2 = 0;
+      adc3 = 0;
+      digitalWrite(PIN_TEST2, HIGH);
+      digitalWrite(PIN_LED_TXL, HIGH); // para ver la latencia
+      attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
+    }//contadorLecturasADC == LECTURAS_ADC
 }
 /**************************************************************
  *                FIN
