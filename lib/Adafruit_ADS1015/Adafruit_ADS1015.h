@@ -37,7 +37,7 @@
     CONVERSION DELAY (in mS)
     -----------------------------------------------------------------------*/
     #define ADS1015_CONVERSIONDELAY         (1)
-    #define ADS1115_CONVERSIONDELAY         (2)		//8      cambiado de 3 a 12 3/3/2023 PAtricio Coronado
+    #define ADS1115_CONVERSIONDELAY         (2)		//8      cambiado de 3 a 2 6/3/2023 PAtricio Coronado
 /*=========================================================================*/
 
 /*=========================================================================

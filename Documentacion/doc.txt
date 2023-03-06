@@ -62,3 +62,43 @@ El EIC del SAMD21 es altamente configurable, y puede ser utilizado para detectar
 El EIC del SAMD21 puede ser utilizado en conjunto con otros periféricos del microcontrolador, como el NVIC y
  el gestor de eventos (Event System), para lograr un control eficiente de las interrupciones y de los recursos
   del sistema.
+
+
+
+  patriciocoronadocollado@gmail.com
+Co un SAMD21 en la plataforma Arduino, ¿Como se limpia una interrupción de un pin?
+El SAMD21 es un microcontrolador de la familia ARM Cortex-M0+ y es utilizado en algunas placas de la plataforma Arduino como la Arduino Zero y la MKR1000.
+
+Para limpiar una interrupción de un pin en el SAMD21 se debe seguir los siguientes pasos:
+
+Identificar el número del pin que generó la interrupción.
+Verificar qué tipo de interrupción se generó (por ejemplo, una interrupción por cambio de nivel o una interrupción por flanco).
+Borrar el flag de la interrupción en el registro correspondiente.
+A continuación, se presenta un ejemplo de cómo limpiar una interrupción por cambio de nivel en el pin 2 de la placa Arduino Zero:
+
+C++
+Copy code
+void setup() {
+  // Configurar el pin 2 como entrada con pull-up activo
+  pinMode(2, INPUT_PULLUP);
+  
+  // Habilitar la interrupción por cambio de nivel en el pin 2
+  attachInterrupt(digitalPinToInterrupt(2), isr, CHANGE);
+}
+
+void loop() {
+  // Hacer algo en el loop principal
+}
+
+void isr() {
+  // Limpiar la interrupción por cambio de nivel en el pin 2
+  uint32_t pinMask = digitalPinToBitMask(2);
+  PORT->Group[PORTA].INTFLAG.reg = pinMask;
+}
+En este ejemplo, la función attachInterrupt se utiliza para habilitar la interrupción por cambio de nivel en el pin 2. Cuando se
+ genera una interrupción, la función isr se ejecuta y limpia el flag de la interrupción en el registro INTFLAG del grupo de puertos PORTA.
+
+Es importante destacar que en el SAMD21 hay varios grupos de puertos (PORTA, PORTB, PORTC, etc.) y cada uno tiene su propio registro INTFLAG.
+ Además, dependiendo del tipo de interrupción, puede haber otros registros y configuraciones que se deben tener en cuenta para limpiar la 
+ interrupción correctamente. Por lo tanto, se recomienda revisar la documentación del microcontrolador y de la placa Arduino en la que se está
+  trabajando para conocer los detalles específicos

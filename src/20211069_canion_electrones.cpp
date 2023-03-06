@@ -18,42 +18,49 @@
 // Recursos utilizados
 #include <U8g2lib.h>          //Display
 #include <Wire.h>             //I2C para el display y el ADC
-//#include "ZeroConfigureADC.h" //ADC más rápido del SAMD21
 #include <TimerTCC0.h>        //Timer para periodo de muestreo
 #include <Adafruit_ADS1015.h> //ADC ADS1115
 #include "WDTZero.h"          //Watchdog
 #include <FlashStorage.h>     //Para emular EEPROM
+#include "SegaSCPI.h"
+/*************************************************************
+  Macros
+**************************************************************/
+#define DEPURACION(x) if(depuracion) Serial.println(x)
 /**************************************************************
  * recursos opcionales
  * ************************************************************/
 #define PUERTO_SERIE
-//#define FLUSH_WIRE
-// #define EEPROM //Sería para guardar el dutycicle pero no lo usaré
+//#define EEPROM //Sería para guardar el dutycicle pero no lo usaré
 #define WATCHDOG //Resetea el sistema si se cuelga
-//#define DELAY_ADC //Delay entre conversiones
 /**************************************************************
  * Constantes y variables primitivas
  ***************************************************************/
+bool depuracion = false; //a true para depurar, false para montar en el equipo
 // Ganancias para calcular los valores reales de las medidas
 //V Energy 
-#define PENDIENTE_VE 0.00742     // Ver el excel "Ajuste curvas del DAC.xlsx"
-#define b_VE 1.067
+#define PENDIENTE_VE 0.0075     // Ver el excel "Ajuste curvas del DAC.xlsx"
+#define b_VE 0.1335
 //Mesh retard
-#define PENDIENTE_MR 0.00619     // Ver el excel "Ajuste curvas del DAC.xlsx"
-#define B_MR 0.7168
+//#define PENDIENTE_MR 0.00619     // Ver el excel "Ajuste curvas del DAC.xlsx"
+//#define B_MR 0.7168
+#define PENDIENTE_MR 0.006179     // Ver el excel "Ajuste curvas del DAC.xlsx"
+#define B_MR 0.15571
 // I Energy
 #define GAIN_IENERGY 10.8     // para ver la corriente en uA
 //Filamento
 #define GAIN_IFILAMENT 1.54 // Ganancia de la lectura del filamento
-// Pines del rotary encoder (poner condensador 100nF a masa)
+// Pines del rotary encoder (poner condensador 100nF a masa) y variables para el duty cicle
 #define CLK_ROTARY_ENCODER 6
 #define DT_ROTARY_ENCODER 7
-#define SW_ROTARY_ENCODER 8
-int dutyCicle = 990;               // DT del PWM, consigna de corriente de filamento
+short dutyCicle = 990;               // DT del PWM, consigna de corriente de filamento-. Al mínimo
+short dutyCicleAnterior=0;
+short dutyCicleEnFlash=0;
 #ifdef EEPROM
-  FlashStorage(dutyCicleBackUp, int);      // Reserva memoria en la flash emulada para el duty cicle 
+  FlashStorage(dutyCicleBackUp, short);      // Reserva memoria en la flash emulada para el duty cicle 
 #endif
 boolean cambiaDutyCicle=false;//Flag para saber si hay que actualizar el dutycicle en el loop
+//
 #define LECTURAS_ADC 20            // LECTURAS_ADC para hacer medias
 short contadorLecturasADC;         // Contador de muestras acumuladas
 #define FREQ_PWM 200               // Frecuencia PWM 200Hz. Armónico de la frecuencia de muestreo para minimizar ruido en las medidas
@@ -78,12 +85,12 @@ float a0;//Medidas en números reales
 float a1;
 float a2;
 float a3;
-bool TimerOn=false;
-bool adquiriendo=false;
-int contadorLoops=0;
+bool leerDAC=false;//Para indicar que hay que leer el ADC
+short contadorLoops=0;
 /**************************************************************
  *  Objetos
  ***************************************************************/
+extern SegaSCPI segaScpi;
 Adafruit_ADS1115 ads; // Convertidor ADC I2C: ADS1115
 // U8X8_SH1106_128X64_NONAME_HW_I2C display(RESET /*pin de reset*/); // Display, reset por pin
 U8X8_SH1106_128X64_NONAME_HW_I2C display(U8X8_PIN_NONE); // Display //Reset por red R-C (10Koh,10uF) OK
@@ -114,15 +121,19 @@ void display_saludo(void)//Cartel de presentación inicial
   display.drawString(0, 6, "LEG24 ELECT.GUN");
 }
 /**************************************************************
- * Rutina de la interrupción del encoder-salida pwm (25us)
+ * Rutina de la interrupción del encoder 4.6us
  * attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);
  * ***********************************************************/
 void encoder(void)
 {
+  //digitalWrite(PIN_LED_RXL, !digitalRead(PIN_LED_RXL)); // Led para ver la latencia
+  digitalWrite(PIN_LED, !digitalRead(PIN_LED)); // Led para ver la latencia
   digitalWrite(PIN_TEST3, LOW);
-  //if(adquiriendo) return;
+  boolean clk = digitalRead(CLK_ROTARY_ENCODER); //Lee el pin que provoca la interrupción
+  if (clk) return;//Si no está a nivel bajo sale sin hacer nada
+  //Si clk está bajo, continua
   boolean dt = digitalRead(DT_ROTARY_ENCODER);
-  int _dutyCicle=dutyCicle; //Guarda el valor de entrada
+  short _dutyCicle=dutyCicle; //Guarda el valor actual de dutyCicle de entrada
   //if (dt == false) //Poner la que registre el sentido correcto
   if (dt == true)
   {
@@ -151,10 +162,7 @@ void encoder(void)
  * ***********************************************************/
 void timerTS(void)
 {
-  adquiriendo=true;
-  // D_A0+=analogRead(A0); //Lee el D0 del ADC del SAMD21. Uso optativo para alguna señal
-  
-  
+  leerDAC=true;
 }
 /**************************************************************
  * Función que se ejecuta cuando actua el watchdog
@@ -182,8 +190,8 @@ void timerTS(void)
 void setup(void)
 {
   //Pines
-  pinMode(ENABLE_FILAMENTO, OUTPUT);// Lo primero inhabilita el filamento
-  digitalWrite(ENABLE_FILAMENTO, LOW);
+  pinMode(ENABLE_FILAMENTO, OUTPUT);
+  digitalWrite(ENABLE_FILAMENTO, LOW);// Lo primero inhabilita el filamento
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); // Apaga el led para no consumir. Se apaga con high
   digitalWrite(PIN_LED_RXL, HIGH); //
@@ -221,18 +229,20 @@ void setup(void)
   GAIN_EIGHT        = ADS1015_REG_CONFIG_PGA_0_512V,VFS=0,512V 15 BITS
   GAIN_SIXTEEN      = ADS1015_REG_CONFIG_PGA_0_256VVFS=0,256V 15 BITS
   */
-  #ifdef EEPROM 
-    dutyCicle =dutyCicleBackUp.read();
-    //if(dutyCicle>990 || dutyCicle<10) dutyCicle=990;
+  #ifdef EEPROM //Ver la sección GRABA EL DUTY CICLE en el loop
+    dutyCicle =dutyCicleBackUp.read();//Lee lo guardado en flash
+    if(dutyCicle > 990 || dutyCicle < 10)
+    {
+      dutyCicle = 990;//Si no está en rango le da el valor mínimo
+    }
   #endif
   pwm(PIN_PWM, FREQ_PWM, dutyCicle);
   display_saludo();
-  delay(1000); // Presentación inicial del display
+  delay(2000); // Presentación inicial del display
   display.clear();
-  digitalWrite(ENABLE_FILAMENTO, HIGH);//Hay una red RC que retarda el enable
   // Prioridad en las interrupciones. Ver Doc.txt
-  NVIC_SetPriority(TCC0_IRQn, 30); // mínima prioridad de interrupción Timer0
-  NVIC_SetPriority(EIC_IRQn,31); // External Interrupt Controller (EIC). Interrupción de pines mínima prioridad 
+  NVIC_SetPriority(TCC0_IRQn, 30); // Baja prioridad de interrupción Timer0
+  NVIC_SetPriority(EIC_IRQn,31); // Interrupciones de pines. Mínima prioridad 
   NVIC_SetPriority(WDT_IRQn,29); //Interrupción del watchdog
   // https://microchipdeveloper.com/32arm:samd21-nvic-overview
   // Arranca el rotary encoder
@@ -240,8 +250,9 @@ void setup(void)
   // Arranca el Timer0. Empieza a capturar muestras
   TimerTcc0.initialize(TS_20ms); // preferiblemente 20ms
   TimerTcc0.attachInterrupt(timerTS);
+  //Habilita el filamento
+  digitalWrite(ENABLE_FILAMENTO, HIGH);//Hay una red RC que retarda el enable
   //Programa el watchdog
-   
    #ifdef WATCHDOG
     WatchDog.attachShutdown(WatchDog_reset); // Función ejecutada por el watchdog
    #endif     
@@ -260,17 +271,12 @@ void setup(void)
  ***************************************************************/
 void loop(void)
 {
+   if (Serial.available()){segaScpi.scpi(&Serial);}
    #ifdef WATCHDOG
     WatchDog.clear(); // Refesca el watchdog-----------------
    #endif
-   if(TimerOn) //Arranca el timer de adquisición si se paro para enviar datos al display en el loop
-   {
-    TimerTcc0.start();
-    attachInterrupt(CLK_ROTARY_ENCODER, encoder, FALLING);// Habilita interrupcione del rotary encoder
-    TimerOn=false;
-   }
-
-   if (adquiriendo)
+   //ADQUIERE VALORES DEL DAC............................................
+   if (leerDAC)
    {
     contadorLecturasADC++;
     digitalWrite(PIN_TEST1, LOW);
@@ -284,24 +290,22 @@ void loop(void)
     adc1 = adc1 + _adc1;
     _adc2 = ads.readADC_SingleEnded(2); // Lee el ADC2
     adc2 = adc2 + _adc2;
-    // adquiriendo=false;
     digitalWrite(PIN_TEST1, HIGH);
-    adquiriendo = false;
+    leerDAC = false;
    }
-
+   // ACTUALIZA DUTY CICLE DEL FILAMENTO.....................................
    if(cambiaDutyCicle)//Si es necesario actualiza el setpoint de corriente 
   {
     pwm(PIN_PWM, FREQ_PWM, dutyCicle);
     cambiaDutyCicle=false;
   }
-  //Medidas 
+  //ACTUALIZA LAS MEDIDAS EN EL DISPLAY.....................................
   if (contadorLecturasADC == LECTURAS_ADC) // Si ha hecho 20 LECTURAS_ADC promedia y muestra
   {                                        // Inhabilita interrupciones para evitar conflictos
     TimerTcc0.stop();//Detiene el timer de adquisición
-    detachInterrupt(CLK_ROTARY_ENCODER); //Evita interrupciones del rotary encoder
-    digitalWrite(PIN_LED_TXL, LOW); // para ver la latencia
+    //detachInterrupt(CLK_ROTARY_ENCODER); //Evita interrupciones del rotary encoder
+    digitalWrite(PIN_LED_TXL, LOW); // Led para ver la latencia
     digitalWrite(PIN_TEST2, LOW);//2.5ms
-    //TimerTcc0.detachInterrupt();//Detiene las adquisiciones del ADC
     // Calcula valores de medida a partir de las medias de los datos acumulados del ADC
     adc0 = adc0 / LECTURAS_ADC;                 // Corriente de filamento
     adc1 = adc1 / LECTURAS_ADC;                 // Mesh retard
@@ -316,11 +320,9 @@ void loop(void)
     // muestra las medidas
     char buffer[16];//Para enviar al display con las medidas
     // filamento
-    #ifdef  FLUSH_WIRE
-      Wire.flush();  Wire.begin();//Antes de leer hay que reiniciar el I2C porque se cuelga el ADC
-    #endif  
-    //snprintf(buffer,sizeof buffer,"I_FIL=%.2fA %.1d%s",a0,(100-(dutyCicle/10)),"% "); //Medida opcional de I fil. donde se ve el %
-    snprintf(buffer,sizeof buffer,"I_FIL=%.2fA  ",a0);
+    short porcentajeFilameto=(short)100-(dutyCicle/10);
+    snprintf(buffer,sizeof buffer,"I_FIL=%.2fA %d%s",a0,porcentajeFilameto,"% "); //Medida opcional de I fil. donde se ve el %
+    //snprintf(buffer,sizeof buffer,"I_FIL=%.2fA  ",a0);
     buffer[15]='\0';//Esto para evitar problemas con los datos enviados al display
     display.drawString(0, 0, buffer);//En la linea 0 I_Filamento a0
     //mesh retard
@@ -345,10 +347,31 @@ void loop(void)
     adc3 = 0;
     contadorLecturasADC = 0;// Reset del contador de lecturas
     digitalWrite(PIN_TEST2, HIGH);
-    digitalWrite(PIN_LED_TXL, HIGH); // para ver la latencia
-    TimerOn=true;//Para que ponga en marcha el timer en el siguiente loop
-    //if(++contadorLoops==5){ Serial.println("Sigue funcionando");contadorLoops=0;}//delay(2000); //Para test. Hace que el watchdog resetee el uC
+    digitalWrite(PIN_LED_TXL, HIGH); // Led para ver la latencia
+    TimerTcc0.start();//TimerTcc0.restart() no funciona ¿?
+    contadorLoops++;
   }
+  //GRABA EL DUTY CICLE SOLO SI HA CAMBIADO
+  #ifdef EEPROM
+    if(contadorLoops==150) //Si ha pasado un minuto guarda el duty cicle
+    {
+      if(dutyCicle==dutyCicleAnterior)//Si el duty cicle no ha cambiado en 1 minuto lo guarda en flash si no lo está ya
+      {
+        if(dutyCicle!=dutyCicleEnFlash)//Si este valor no está ya en flash lo guarda
+        {
+          dutyCicleBackUp.write(dutyCicle); //Guarda el duty cicle
+          dutyCicleEnFlash=dutyCicle; //Recuerda el último valor guardado en flash
+          DEPURACION("Guardado en Flash ");
+          DEPURACION((int)100-dutyCicle/10);
+        }
+      }
+      else //Si el duty cicle ha cambiado en menos de 1 minuto actualizamos el valor... 
+      {
+        dutyCicleAnterior=dutyCicle; //... para la siguiente comprobación 
+      }
+      contadorLoops=0; //Resetea el  contador de loops
+    }
+  #endif
 }
 /**************************************************************
  *                FIN

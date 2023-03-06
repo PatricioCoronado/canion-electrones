@@ -1,0 +1,27 @@
+####################################################
+# Datatypes	(KEYWORD1)
+####################################################
+tipoNivel	KEYWORD1
+PilaErrorores	KEYWORD1
+SegaSCPI    KEYWORD1
+####################################################
+# Functions	(KEYWORD2)
+####################################################
+errorscpi	KEYWORD2
+scpi	KEYWORD2
+actualizaVarEntera	KEYWORD2
+actualizaVarBooleana	KEYWORD2
+actualizaVarDecimal	KEYWORD2
+actualizaVarDiscreta	KEYWORD2
+####################################################
+# Functions	(KEYWORD2)
+####################################################
+BUFFCOM_SIZE    KEYWORD3
+LONG_SCPI   KEYWORD3
+MAX_LONG_STRING_ERR KEYWORD3
+MIN_INDICE  KEYWORD3
+MAX_INDICE  KEYWORD3
+MAX_CODIGO  KEYWORD3
+PROFUNDIDAD_PILA_ERR    KEYWORD3
+STRINGS_ERRORES_SCPI    KEYWORD3
+####################################################

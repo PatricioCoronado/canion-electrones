@@ -1,0 +1,12 @@
+{
+  "name": "SegaSCPI",
+  "keywords": "serial, communication, SCPI",
+  "description": "Library to communicate a PC with Arduino",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/PatricioCoronado/SegaSCPI"
+  },
+  "frameworks": "arduino",
+  "platforms": "Espressif 32, Atmel SAM"
+}
