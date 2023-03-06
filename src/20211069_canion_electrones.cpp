@@ -12,7 +12,7 @@
  *  de corriente de filamento la establece una salida PWM 
  *  entre 10 y 990, con 10 la corriente de filamento es de
  *  3,1A y con 990 es de menos de 10mA.
- *  Ultima actualizacion 03-03-2022
+ *  Ultima actualizacion 06-03-2022
  **************************************************************/
 #include <Arduino.h>
 // Recursos utilizados
